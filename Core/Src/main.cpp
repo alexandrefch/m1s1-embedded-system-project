@@ -19,6 +19,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <serial.h>
+#include <APDS9960.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -32,6 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#define PROXIMITY_STEP 10
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,7 +50,7 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+APDS9960 *apds;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +59,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+void SetProximityIntThreshold(uint8_t);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -93,19 +98,54 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  serial::setUart(&huart2);
 
-  /* USER CODE END 2 */
+  apds = new APDS9960(&hi2c1);
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+  if ( apds->init() ) {
+    serial::println("APDS-9960 initialization complete");
+  } else {
+    serial::println("Something went wrong during APDS-9960 init!");
   }
-  /* USER CODE END 3 */
-}
+
+  // Adjust the Proximity sensor gain
+  if ( !apds->setProximityGain(PGAIN_2X) ) {
+    serial::println("Something went wrong trying to set PGAIN");
+  }
+
+  // Set proximity interrupt thresholds
+  if ( !apds->setProximityIntLowThreshold(0) ) {
+    serial::println("Error writing low threshold");
+  }
+  if ( !apds->setProximityIntHighThreshold(50) ) {
+    serial::println("Error writing high threshold");
+  }
+
+  // Start running the APDS-9960 proximity sensor (no interrupts)
+  // Settings to defaults
+  if ( apds->enableProximitySensor(true) ) {
+    serial::println("Proximity sensor is now running");
+  } else {
+    serial::println("Something went wrong during sensor init!");
+  }
+
+  SetProximityIntThreshold(10);
+    /* USER CODE END 2 */
+
+    /* Infinite loop */
+    /* USER CODE BEGIN WHILE */
+    while (1)
+    {
+        HAL_GPIO_TogglePin (GPIOA, GPIO_PIN_5);
+        HAL_Delay(500);
+        HAL_GPIO_TogglePin (GPIOA, GPIO_PIN_5);
+        HAL_Delay(500);
+      /* USER CODE END WHILE */
+
+      /* USER CODE BEGIN 3 */
+    }
+    /* USER CODE END 3 */
+  }
 
 /**
   * @brief System Clock Configuration
@@ -251,7 +291,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PB7 */
   GPIO_InitStruct.Pin = GPIO_PIN_7;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
@@ -262,7 +302,32 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void SetProximityIntThreshold(uint8_t proximity){
+	apds->setProximityIntLowThreshold(MAX(proximity - PROXIMITY_STEP,0));
+	apds->setProximityIntHighThreshold(MIN(proximity + PROXIMITY_STEP,255));
 
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_7) // If The INT Source Is EXTI Line9 (A9 Pin)
+    {
+	    	uint8_t proximity_data = 0;
+    		if ( !apds->readProximity(proximity_data) ) {
+    			serial::println("Error reading proximity value");
+    		} else {
+    			serial::print(proximity_data);
+    			serial::println("");
+    		}
+
+    		SetProximityIntThreshold(proximity_data);
+
+    		if ( !apds->clearProximityInt() ) {
+    			serial::println("Error clearing interrupt");
+    		}
+    }
+
+}
 /* USER CODE END 4 */
 
 /**
