@@ -17,8 +17,9 @@ public:
 	static void setUart (UART_HandleTypeDef *uart);
 	static void println (const char *message);
 	static void print   (const char *message);
-	static void printHex(uint8_t val);
-	static void printInt(uint8_t val);
+	static void printHex(const uint8_t val);
+	static void print   (const uint8_t val);
+	static void print   (const uint16_t val);
 
 private:
 	static UART_HandleTypeDef *_uart;
