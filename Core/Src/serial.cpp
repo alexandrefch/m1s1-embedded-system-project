@@ -33,8 +33,14 @@ void serial::printHex(const uint8_t val){
 	serial::print(buffer);
 }
 
-void serial::printInt(const uint8_t val){
-	char buffer[8];
+void serial::print(const uint8_t val){
+	char buffer[4];
+	sprintf(buffer, "%d", val);
+	serial::print(buffer);
+}
+
+void serial::print(const uint16_t val){
+	char buffer[6];
 	sprintf(buffer, "%d", val);
 	serial::print(buffer);
 }
