@@ -56,14 +56,19 @@ bool i2c::readDataByte(uint8_t reg, uint8_t &val){
 	return readDataBlock(reg, &val, 1);
 }
 
-bool i2c::readDataBlock(uint8_t reg, uint8_t *val, uint8_t len){
+uint8_t i2c::readDataBlock(uint8_t reg, uint8_t *val, uint8_t len){
 	this->writeByte(reg);
 
-	return HAL_I2C_Master_Receive(
+	uint8_t res = HAL_I2C_Master_Receive(
 			this->_i2cHandler,
 			this->_deviceAddr<<1,
 			val,
 			len,
 			HAL_MAX_DELAY
-			) == HAL_OK;
+			);
+
+	if( res == HAL_OK )
+		return len;
+	else
+		return -1;
 }
