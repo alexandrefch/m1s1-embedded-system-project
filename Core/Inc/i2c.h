@@ -18,7 +18,7 @@ public:
 	bool writeDataByte (uint8_t reg, uint8_t val);
 	bool writeDataBlock(uint8_t reg, uint8_t *val, uint8_t len);
 	bool readDataByte  (uint8_t reg, uint8_t &val);
-	bool readDataBlock (uint8_t reg, uint8_t *val, uint8_t len);
+	uint8_t readDataBlock (uint8_t reg, uint8_t *val, uint8_t len);
 
 private:
 	I2C_HandleTypeDef *_i2cHandler;
