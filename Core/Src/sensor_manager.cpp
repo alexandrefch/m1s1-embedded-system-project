@@ -7,12 +7,12 @@
 
 #include <sensor_manager.h>
 
-APDS9960 *sensor_manager::_apds = nullptr;
+apds9960 *sensor_manager::_apds = nullptr;
 
 bool sensor_manager::_isInterrupt = false;
 
-void sensor_manager::init(I2C_HandleTypeDef *hi2c) {
-	_apds = new APDS9960(hi2c);
+void sensor_manager::init(I2C_HandleTypeDef *hi2c, vnh5019a_e *motorDriver) {
+	_apds = new apds9960(hi2c, motorDriver);
 
 	// Initialize APDS-9960 (configure I2C and initial values)
 	if (_apds->init()) {
@@ -33,28 +33,15 @@ void sensor_manager::triggerInterrupt() {
 	_isInterrupt = true;
 }
 
-
 void sensor_manager::update() {
 	if (_isInterrupt) {
 		if (_apds->isGestureAvailable()) {
 			switch (_apds->readProximityGesture()) {
-			case DIR_UP:
-				serial::println("UP");
-				break;
-			case DIR_DOWN:
-				serial::println("DOWN");
-				break;
 			case DIR_LEFT:
 				serial::println("LEFT");
 				break;
 			case DIR_RIGHT:
 				serial::println("RIGHT");
-				break;
-			case DIR_NEAR:
-				serial::println("NEAR");
-				break;
-			case DIR_FAR:
-				serial::println("FAR");
 				break;
 			default:
 				serial::println("NONE");

@@ -8,18 +8,19 @@
 #ifndef INC_SENSOR_MANAGER_H_
 #define INC_SENSOR_MANAGER_H_
 
-#include <i2c.h>
+#include <Component/apds9960.h>
+#include <Component/vnh5019a_e.h>
+#include <i2c_handler.h>
 #include <serial.h>
-#include <APDS9960.h>
 
 class sensor_manager{
 public:
-	static void init(I2C_HandleTypeDef *hi2c);
+	static void init(I2C_HandleTypeDef *hi2c, vnh5019a_e *motorDriver);
 	static void triggerInterrupt();
 	static void update();
 
 private:
-	static APDS9960 *_apds;
+	static apds9960 *_apds;
 	static bool _isInterrupt;
 };
 
