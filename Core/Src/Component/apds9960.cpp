@@ -1,5 +1,5 @@
 /**
- * @file    APDS9960.cpp
+ * @file    apds9960.cpp
  * @brief   Library for the SparkFun APDS-9960 breakout board
  * @author  Shawn Hymel (SparkFun Electronics)
  *
@@ -8,7 +8,7 @@
  *
  * This library interfaces the Avago APDS-9960 to Arduino over I2C. The library
  * relies on the Arduino Wire (I2C) library. to use the library, instantiate an
- * APDS9960 object, call init(), and call the appropriate functions.
+ * apds9960 object, call init(), and call the appropriate functions.
  *
  * APDS-9960 current draw tests (default parameters):
  *   Off:                   1mA
@@ -16,21 +16,20 @@
  *   Gesture in progress:   35mA
  */
 
-#include <APDS9960.h>
+#include <Component/apds9960.h>
 #include <stm32f4xx_hal.h>
 #include <serial.h>
 
 int abs(int value) {
-	if (value > 0)
-		return value;
-	return value * -1;
+	return value * ((value > 0) ? 1 : -1);
 }
 
 /**
- * @brief Constructor - Instantiates APDS9960 object
+ * @brief Constructor - Instantiates apds9960 object
  */
-APDS9960::APDS9960(I2C_HandleTypeDef *i2cHandler) {
-	this->_i2c = new i2c(i2cHandler, APDS9960_I2C_ADDR);
+apds9960::apds9960(I2C_HandleTypeDef *i2cHandler, vnh5019a_e *motorDriver) {
+	this->_I2C_Handler = new I2C_Handler(i2cHandler, APDS9960_I2C_ADDR);
+	this->_motorDriver = motorDriver;
 
 	gesture_ud_delta_ = 0;
 	gesture_lr_delta_ = 0;
@@ -48,7 +47,7 @@ APDS9960::APDS9960(I2C_HandleTypeDef *i2cHandler) {
 /**
  * @brief Destructor
  */
-APDS9960::~APDS9960() {
+apds9960::~apds9960() {
 
 }
 
@@ -57,11 +56,11 @@ APDS9960::~APDS9960() {
  *
  * @return True if initialized successfully. False otherwise.
  */
-bool APDS9960::init() {
+bool apds9960::init() {
 	uint8_t id;
 
 	/* Read ID register and check against known values for APDS-9960 */
-	if (!this->_i2c->readDataByte(APDS9960_ID, id)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_ID, id)) {
 		return false;
 	}
 	if (!(id == APDS9960_ID_1 || id == APDS9960_ID_2)) {
@@ -74,22 +73,25 @@ bool APDS9960::init() {
 	}
 
 	/* Set default values for ambient light and proximity registers */
-	if (!this->_i2c->writeDataByte(APDS9960_ATIME, DEFAULT_ATIME)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_ATIME, DEFAULT_ATIME)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_WTIME, DEFAULT_WTIME)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_WTIME, DEFAULT_WTIME)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_PPULSE, DEFAULT_PROX_PPULSE)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PPULSE,
+			DEFAULT_PROX_PPULSE)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_POFFSET_UR, DEFAULT_POFFSET_UR)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_POFFSET_UR,
+			DEFAULT_POFFSET_UR)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_POFFSET_DL, DEFAULT_POFFSET_DL)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_POFFSET_DL,
+			DEFAULT_POFFSET_DL)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_CONFIG1, DEFAULT_CONFIG1)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONFIG1, DEFAULT_CONFIG1)) {
 		return false;
 	}
 	if (!setLEDDrive(DEFAULT_LDRIVE)) {
@@ -113,13 +115,13 @@ bool APDS9960::init() {
 	if (!setLightIntHighThreshold(DEFAULT_AIHT)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_PERS, DEFAULT_PERS)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PERS, DEFAULT_PERS)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_CONFIG2, DEFAULT_CONFIG2)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONFIG2, DEFAULT_CONFIG2)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_CONFIG3, DEFAULT_CONFIG3)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONFIG3, DEFAULT_CONFIG3)) {
 		return false;
 	}
 
@@ -130,7 +132,7 @@ bool APDS9960::init() {
 	if (!setGestureExitThresh(DEFAULT_GEXTH)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF1, DEFAULT_GCONF1)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF1, DEFAULT_GCONF1)) {
 		return false;
 	}
 	if (!setGestureGain(DEFAULT_GGAIN)) {
@@ -142,22 +144,26 @@ bool APDS9960::init() {
 	if (!setGestureWaitTime(DEFAULT_GWTIME)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GOFFSET_U, DEFAULT_GOFFSET)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GOFFSET_U,
+			DEFAULT_GOFFSET)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GOFFSET_D, DEFAULT_GOFFSET)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GOFFSET_D,
+			DEFAULT_GOFFSET)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GOFFSET_L, DEFAULT_GOFFSET)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GOFFSET_L,
+			DEFAULT_GOFFSET)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GOFFSET_R, DEFAULT_GOFFSET)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GOFFSET_R,
+			DEFAULT_GOFFSET)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GPULSE, DEFAULT_GPULSE)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GPULSE, DEFAULT_GPULSE)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF3, DEFAULT_GCONF3)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF3, DEFAULT_GCONF3)) {
 		return false;
 	}
 	if (!setGestureIntEnable(DEFAULT_GIEN)) {
@@ -177,7 +183,7 @@ bool APDS9960::init() {
             (reg != 0xAC) && \
             (reg != 0xAD) )
         {
-            this->_i2c->readDataByte(reg, val);
+            this->_I2C_Handler->readDataByte(reg, val);
             Serial.print(reg, HEX);
             Serial.print(": 0x");
             Serial.println(val, HEX);
@@ -185,7 +191,7 @@ bool APDS9960::init() {
     }
 
     for(reg = 0xE4; reg <= 0xE7; reg++) {
-        this->_i2c->readDataByte(reg, val);
+        this->_I2C_Handler->readDataByte(reg, val);
         Serial.print(reg, HEX);
         Serial.print(": 0x");
         Serial.println(val, HEX);
@@ -204,11 +210,11 @@ bool APDS9960::init() {
  *
  * @return Contents of the ENABLE register. 0xFF if error.
  */
-uint8_t APDS9960::getMode() {
+uint8_t apds9960::getMode() {
 	uint8_t enable_value;
 
 	/* Read current ENABLE register */
-	if (!this->_i2c->readDataByte(APDS9960_ENABLE, enable_value)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_ENABLE, enable_value)) {
 		return ERROR;
 	}
 
@@ -222,7 +228,7 @@ uint8_t APDS9960::getMode() {
  * @param[in] enable ON (1) or OFF (0)
  * @return True if operation success. False otherwise.
  */
-bool APDS9960::setMode(uint8_t mode, uint8_t enable) {
+bool apds9960::setMode(uint8_t mode, uint8_t enable) {
 	uint8_t reg_val;
 
 	/* Read current ENABLE register */
@@ -248,7 +254,7 @@ bool APDS9960::setMode(uint8_t mode, uint8_t enable) {
 	}
 
 	/* Write value back to ENABLE register */
-	if (!this->_i2c->writeDataByte(APDS9960_ENABLE, reg_val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_ENABLE, reg_val)) {
 		return false;
 	}
 
@@ -261,7 +267,7 @@ bool APDS9960::setMode(uint8_t mode, uint8_t enable) {
  * @param[in] interrupts true to enable hardware interrupt on high or low light
  * @return True if sensor enabled correctly. False on error.
  */
-bool APDS9960::enableLightSensor(bool interrupts) {
+bool apds9960::enableLightSensor(bool interrupts) {
 
 	/* Set default gain, interrupts, enable power, and enable sensor */
 	if (!setAmbientLightGain(DEFAULT_AGAIN)) {
@@ -292,7 +298,7 @@ bool APDS9960::enableLightSensor(bool interrupts) {
  *
  * @return True if sensor disabled correctly. False on error.
  */
-bool APDS9960::disableLightSensor() {
+bool apds9960::disableLightSensor() {
 	if (!setAmbientLightIntEnable(0)) {
 		return false;
 	}
@@ -309,7 +315,7 @@ bool APDS9960::disableLightSensor() {
  * @param[in] interrupts true to enable hardware external interrupt on proximity
  * @return True if sensor enabled correctly. False on error.
  */
-bool APDS9960::enableProximitySensor(bool interrupts) {
+bool apds9960::enableProximitySensor(bool interrupts) {
 	/* Set default gain, LED, interrupts, enable power, and enable sensor */
 	if (!setProximityGain(DEFAULT_PGAIN)) {
 		return false;
@@ -341,7 +347,7 @@ bool APDS9960::enableProximitySensor(bool interrupts) {
  *
  * @return True if sensor disabled correctly. False on error.
  */
-bool APDS9960::disableProximitySensor() {
+bool apds9960::disableProximitySensor() {
 	if (!setProximityIntEnable(0)) {
 		return false;
 	}
@@ -358,7 +364,7 @@ bool APDS9960::disableProximitySensor() {
  * @param[in] interrupts true to enable hardware external interrupt on gesture
  * @return True if engine enabled correctly. False on error.
  */
-bool APDS9960::enableGestureSensor(bool interrupts) {
+bool apds9960::enableGestureSensor(bool interrupts) {
 
 	/* Enable gesture mode
 	 Set ENABLE to 0 (power off)
@@ -367,10 +373,11 @@ bool APDS9960::enableGestureSensor(bool interrupts) {
 	 Enable PON, WEN, PEN, GEN in ENABLE
 	 */
 	resetGestureParameters();
-	if (!this->_i2c->writeDataByte(APDS9960_WTIME, 0xFF)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_WTIME, 0xFF)) {
 		return false;
 	}
-	if (!this->_i2c->writeDataByte(APDS9960_PPULSE, DEFAULT_GESTURE_PPULSE)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PPULSE,
+			DEFAULT_GESTURE_PPULSE)) {
 		return false;
 	}
 	if (!setLEDBoost(LED_BOOST_300)) {
@@ -409,7 +416,7 @@ bool APDS9960::enableGestureSensor(bool interrupts) {
  *
  * @return True if engine disabled correctly. False on error.
  */
-bool APDS9960::disableGestureSensor() {
+bool apds9960::disableGestureSensor() {
 	resetGestureParameters();
 	if (!setGestureIntEnable(0)) {
 		return false;
@@ -429,11 +436,11 @@ bool APDS9960::disableGestureSensor() {
  *
  * @return True if gesture available. False otherwise.
  */
-bool APDS9960::isGestureAvailable() {
+bool apds9960::isGestureAvailable() {
 	uint8_t val;
 
 	/* Read value from GSTATUS register */
-	if (!this->_i2c->readDataByte(APDS9960_GSTATUS, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GSTATUS, val)) {
 		return ERROR;
 	}
 
@@ -453,7 +460,7 @@ bool APDS9960::isGestureAvailable() {
  *
  * @return Number corresponding to gesture. -1 on error.
  */
-int APDS9960::readGesture() {
+int apds9960::readGesture() {
 	uint8_t fifo_level = 0;
 	uint8_t bytes_read = 0;
 	uint8_t fifo_data[128];
@@ -473,7 +480,7 @@ int APDS9960::readGesture() {
 		HAL_Delay(FIFO_PAUSE_TIME);
 
 		/* Get the contents of the STATUS register. Is data still valid? */
-		if (!this->_i2c->readDataByte(APDS9960_GSTATUS, gstatus)) {
+		if (!this->_I2C_Handler->readDataByte(APDS9960_GSTATUS, gstatus)) {
 			return ERROR;
 		}
 
@@ -481,7 +488,7 @@ int APDS9960::readGesture() {
 		if ((gstatus & APDS9960_GVALID) == APDS9960_GVALID) {
 
 			/* Read the current FIFO level */
-			if (!this->_i2c->readDataByte(APDS9960_GFLVL, fifo_level)) {
+			if (!this->_I2C_Handler->readDataByte(APDS9960_GFLVL, fifo_level)) {
 				return ERROR;
 			}
 
@@ -492,8 +499,9 @@ int APDS9960::readGesture() {
 
 			/* If there's stuff in the FIFO, read it into our data block */
 			if (fifo_level > 0) {
-				bytes_read = this->_i2c->readDataBlock( APDS9960_GFIFO_U,
-						(uint8_t*) fifo_data, (fifo_level * 4));
+				bytes_read = this->_I2C_Handler->readDataBlock(
+						APDS9960_GFIFO_U, (uint8_t*) fifo_data,
+						(fifo_level * 4));
 				if (bytes_read == -1) {
 					return ERROR;
 				}
@@ -561,7 +569,7 @@ int APDS9960::readGesture() {
 	}
 }
 
-int APDS9960::readProximityGesture() {
+int apds9960::readProximityGesture() {
 	uint8_t fifo_level = 0;
 	uint8_t bytes_read = 0;
 	uint8_t fifo_data[128];
@@ -581,7 +589,7 @@ int APDS9960::readProximityGesture() {
 		HAL_Delay(FIFO_PAUSE_TIME);
 
 		/* Get the contents of the STATUS register. Is data still valid? */
-		if (!this->_i2c->readDataByte(APDS9960_GSTATUS, gstatus)) {
+		if (!this->_I2C_Handler->readDataByte(APDS9960_GSTATUS, gstatus)) {
 			return ERROR;
 		}
 
@@ -589,14 +597,15 @@ int APDS9960::readProximityGesture() {
 		if ((gstatus & APDS9960_GVALID) == APDS9960_GVALID) {
 
 			/* Read the current FIFO level */
-			if (!this->_i2c->readDataByte(APDS9960_GFLVL, fifo_level)) {
+			if (!this->_I2C_Handler->readDataByte(APDS9960_GFLVL, fifo_level)) {
 				return ERROR;
 			}
 
 			/* If there's stuff in the FIFO, read it into our data block */
 			if (fifo_level > 0) {
-				bytes_read = this->_i2c->readDataBlock( APDS9960_GFIFO_U,
-						(uint8_t*) fifo_data, (fifo_level * 4));
+				bytes_read = this->_I2C_Handler->readDataBlock(
+						APDS9960_GFIFO_U, (uint8_t*) fifo_data,
+						(fifo_level * 4));
 				if (bytes_read == -1) {
 					return ERROR;
 				}
@@ -620,9 +629,11 @@ int APDS9960::readProximityGesture() {
 					if (processGestureData()) {
 						if (decodeGesture()) {
 							if (gesture_motion_ == DIR_FAR) {
-
+								serial::println("FAR");
+								_motorDriver->updateSpeed(-1000);
 							} else if (gesture_motion_ == DIR_NEAR) {
-
+								serial::println("NEAR");
+								_motorDriver->updateSpeed(1000);
 							}
 						}
 					}
@@ -637,6 +648,13 @@ int APDS9960::readProximityGesture() {
 			HAL_Delay(FIFO_PAUSE_TIME);
 			decodeGesture();
 			motion = gesture_motion_;
+
+			if (gesture_motion_ == DIR_LEFT) {
+				_motorDriver->turnLeft();
+			} else if (gesture_motion_ == DIR_RIGHT) {
+				_motorDriver->turnRight();
+			}
+
 			resetGestureParameters();
 			return motion;
 		}
@@ -648,7 +666,7 @@ int APDS9960::readProximityGesture() {
  *
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::enablePower() {
+bool apds9960::enablePower() {
 	if (!setMode(POWER, 1)) {
 		return false;
 	}
@@ -661,7 +679,7 @@ bool APDS9960::enablePower() {
  *
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::disablePower() {
+bool apds9960::disablePower() {
 	if (!setMode(POWER, 0)) {
 		return false;
 	}
@@ -679,18 +697,18 @@ bool APDS9960::disablePower() {
  * @param[out] val value of the light sensor.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::readAmbientLight(uint16_t &val) {
+bool apds9960::readAmbientLight(uint16_t &val) {
 	uint8_t val_byte;
 	val = 0;
 
 	/* Read value from clear channel, low byte register */
-	if (!this->_i2c->readDataByte(APDS9960_CDATAL, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CDATAL, val_byte)) {
 		return false;
 	}
 	val = val_byte;
 
 	/* Read value from clear channel, high byte register */
-	if (!this->_i2c->readDataByte(APDS9960_CDATAH, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CDATAH, val_byte)) {
 		return false;
 	}
 	val = val + ((uint16_t) val_byte << 8);
@@ -704,18 +722,18 @@ bool APDS9960::readAmbientLight(uint16_t &val) {
  * @param[out] val value of the light sensor.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::readRedLight(uint16_t &val) {
+bool apds9960::readRedLight(uint16_t &val) {
 	uint8_t val_byte;
 	val = 0;
 
 	/* Read value from clear channel, low byte register */
-	if (!this->_i2c->readDataByte(APDS9960_RDATAL, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_RDATAL, val_byte)) {
 		return false;
 	}
 	val = val_byte;
 
 	/* Read value from clear channel, high byte register */
-	if (!this->_i2c->readDataByte(APDS9960_RDATAH, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_RDATAH, val_byte)) {
 		return false;
 	}
 	val = val + ((uint16_t) val_byte << 8);
@@ -729,18 +747,18 @@ bool APDS9960::readRedLight(uint16_t &val) {
  * @param[out] val value of the light sensor.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::readGreenLight(uint16_t &val) {
+bool apds9960::readGreenLight(uint16_t &val) {
 	uint8_t val_byte;
 	val = 0;
 
 	/* Read value from clear channel, low byte register */
-	if (!this->_i2c->readDataByte(APDS9960_GDATAL, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GDATAL, val_byte)) {
 		return false;
 	}
 	val = val_byte;
 
 	/* Read value from clear channel, high byte register */
-	if (!this->_i2c->readDataByte(APDS9960_GDATAH, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GDATAH, val_byte)) {
 		return false;
 	}
 	val = val + ((uint16_t) val_byte << 8);
@@ -754,18 +772,18 @@ bool APDS9960::readGreenLight(uint16_t &val) {
  * @param[out] val value of the light sensor.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::readBlueLight(uint16_t &val) {
+bool apds9960::readBlueLight(uint16_t &val) {
 	uint8_t val_byte;
 	val = 0;
 
 	/* Read value from clear channel, low byte register */
-	if (!this->_i2c->readDataByte(APDS9960_BDATAL, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_BDATAL, val_byte)) {
 		return false;
 	}
 	val = val_byte;
 
 	/* Read value from clear channel, high byte register */
-	if (!this->_i2c->readDataByte(APDS9960_BDATAH, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_BDATAH, val_byte)) {
 		return false;
 	}
 	val = val + ((uint16_t) val_byte << 8);
@@ -783,11 +801,11 @@ bool APDS9960::readBlueLight(uint16_t &val) {
  * @param[out] val value of the proximity sensor.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::readProximity(uint8_t &val) {
+bool apds9960::readProximity(uint8_t &val) {
 	val = 0;
 
 	/* Read value from proximity data register */
-	if (!this->_i2c->readDataByte(APDS9960_PDATA, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_PDATA, val)) {
 		return false;
 	}
 
@@ -801,7 +819,7 @@ bool APDS9960::readProximity(uint8_t &val) {
 /**
  * @brief Resets all the parameters in the gesture data member
  */
-void APDS9960::resetGestureParameters() {
+void apds9960::resetGestureParameters() {
 	gesture_data_.index = 0;
 	gesture_data_.total_gestures = 0;
 
@@ -823,7 +841,7 @@ void APDS9960::resetGestureParameters() {
  *
  * @return True if near or far state seen. False otherwise.
  */
-bool APDS9960::processGestureData() {
+bool apds9960::processGestureData() {
 	uint8_t u_first = 0;
 	uint8_t d_first = 0;
 	uint8_t l_first = 0;
@@ -1024,7 +1042,7 @@ bool APDS9960::processGestureData() {
  *
  * @return True if near/far event. False otherwise.
  */
-bool APDS9960::decodeGesture() {
+bool apds9960::decodeGesture() {
 	/* Return if near or far event is detected */
 	if (gesture_state_ == NEAR_STATE) {
 		gesture_motion_ = DIR_NEAR;
@@ -1083,11 +1101,11 @@ bool APDS9960::decodeGesture() {
  *
  * @return lower threshold
  */
-uint8_t APDS9960::getProxIntLowThresh() {
+uint8_t apds9960::getProxIntLowThresh() {
 	uint8_t val;
 
 	/* Read value from PILT register */
-	if (!this->_i2c->readDataByte(APDS9960_PILT, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_PILT, val)) {
 		val = 0;
 	}
 
@@ -1100,8 +1118,8 @@ uint8_t APDS9960::getProxIntLowThresh() {
  * @param[in] threshold the lower proximity threshold
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProxIntLowThresh(uint8_t threshold) {
-	if (!this->_i2c->writeDataByte(APDS9960_PILT, threshold)) {
+bool apds9960::setProxIntLowThresh(uint8_t threshold) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PILT, threshold)) {
 		return false;
 	}
 
@@ -1113,11 +1131,11 @@ bool APDS9960::setProxIntLowThresh(uint8_t threshold) {
  *
  * @return high threshold
  */
-uint8_t APDS9960::getProxIntHighThresh() {
+uint8_t apds9960::getProxIntHighThresh() {
 	uint8_t val;
 
 	/* Read value from PIHT register */
-	if (!this->_i2c->readDataByte(APDS9960_PIHT, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_PIHT, val)) {
 		val = 0;
 	}
 
@@ -1130,8 +1148,8 @@ uint8_t APDS9960::getProxIntHighThresh() {
  * @param[in] threshold the high proximity threshold
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProxIntHighThresh(uint8_t threshold) {
-	if (!this->_i2c->writeDataByte(APDS9960_PIHT, threshold)) {
+bool apds9960::setProxIntHighThresh(uint8_t threshold) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PIHT, threshold)) {
 		return false;
 	}
 
@@ -1149,11 +1167,11 @@ bool APDS9960::setProxIntHighThresh(uint8_t threshold) {
  *
  * @return the value of the LED drive strength. 0xFF on failure.
  */
-uint8_t APDS9960::getLEDDrive() {
+uint8_t apds9960::getLEDDrive() {
 	uint8_t val;
 
 	/* Read value from CONTROL register */
-	if (!this->_i2c->readDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONTROL, val)) {
 		return ERROR;
 	}
 
@@ -1175,11 +1193,11 @@ uint8_t APDS9960::getLEDDrive() {
  * @param[in] drive the value (0-3) for the LED drive strength
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setLEDDrive(uint8_t drive) {
+bool apds9960::setLEDDrive(uint8_t drive) {
 	uint8_t val;
 
 	/* Read value from CONTROL register */
-	if (!this->_i2c->readDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONTROL, val)) {
 		return false;
 	}
 
@@ -1190,7 +1208,7 @@ bool APDS9960::setLEDDrive(uint8_t drive) {
 	val |= drive;
 
 	/* Write register value back into CONTROL register */
-	if (!this->_i2c->writeDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONTROL, val)) {
 		return false;
 	}
 
@@ -1208,11 +1226,11 @@ bool APDS9960::setLEDDrive(uint8_t drive) {
  *
  * @return the value of the proximity gain. 0xFF on failure.
  */
-uint8_t APDS9960::getProximityGain() {
+uint8_t apds9960::getProximityGain() {
 	uint8_t val;
 
 	/* Read value from CONTROL register */
-	if (!this->_i2c->readDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONTROL, val)) {
 		return ERROR;
 	}
 
@@ -1234,11 +1252,11 @@ uint8_t APDS9960::getProximityGain() {
  * @param[in] drive the value (0-3) for the gain
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProximityGain(uint8_t drive) {
+bool apds9960::setProximityGain(uint8_t drive) {
 	uint8_t val;
 
 	/* Read value from CONTROL register */
-	if (!this->_i2c->readDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONTROL, val)) {
 		return false;
 	}
 
@@ -1249,7 +1267,7 @@ bool APDS9960::setProximityGain(uint8_t drive) {
 	val |= drive;
 
 	/* Write register value back into CONTROL register */
-	if (!this->_i2c->writeDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONTROL, val)) {
 		return false;
 	}
 
@@ -1267,11 +1285,11 @@ bool APDS9960::setProximityGain(uint8_t drive) {
  *
  * @return the value of the ALS gain. 0xFF on failure.
  */
-uint8_t APDS9960::getAmbientLightGain() {
+uint8_t apds9960::getAmbientLightGain() {
 	uint8_t val;
 
 	/* Read value from CONTROL register */
-	if (!this->_i2c->readDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONTROL, val)) {
 		return ERROR;
 	}
 
@@ -1293,11 +1311,11 @@ uint8_t APDS9960::getAmbientLightGain() {
  * @param[in] drive the value (0-3) for the gain
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setAmbientLightGain(uint8_t drive) {
+bool apds9960::setAmbientLightGain(uint8_t drive) {
 	uint8_t val;
 
 	/* Read value from CONTROL register */
-	if (!this->_i2c->readDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONTROL, val)) {
 		return false;
 	}
 
@@ -1307,7 +1325,7 @@ bool APDS9960::setAmbientLightGain(uint8_t drive) {
 	val |= drive;
 
 	/* Write register value back into CONTROL register */
-	if (!this->_i2c->writeDataByte(APDS9960_CONTROL, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONTROL, val)) {
 		return false;
 	}
 
@@ -1325,11 +1343,11 @@ bool APDS9960::setAmbientLightGain(uint8_t drive) {
  *
  * @return The LED boost value. 0xFF on failure.
  */
-uint8_t APDS9960::getLEDBoost() {
+uint8_t apds9960::getLEDBoost() {
 	uint8_t val;
 
 	/* Read value from CONFIG2 register */
-	if (!this->_i2c->readDataByte(APDS9960_CONFIG2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONFIG2, val)) {
 		return ERROR;
 	}
 
@@ -1351,11 +1369,11 @@ uint8_t APDS9960::getLEDBoost() {
  * @param[in] drive the value (0-3) for current boost (100-300%)
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setLEDBoost(uint8_t boost) {
+bool apds9960::setLEDBoost(uint8_t boost) {
 	uint8_t val;
 
 	/* Read value from CONFIG2 register */
-	if (!this->_i2c->readDataByte(APDS9960_CONFIG2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONFIG2, val)) {
 		return false;
 	}
 
@@ -1366,7 +1384,7 @@ bool APDS9960::setLEDBoost(uint8_t boost) {
 	val |= boost;
 
 	/* Write register value back into CONFIG2 register */
-	if (!this->_i2c->writeDataByte(APDS9960_CONFIG2, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONFIG2, val)) {
 		return false;
 	}
 
@@ -1378,11 +1396,11 @@ bool APDS9960::setLEDBoost(uint8_t boost) {
  *
  * @return 1 if compensation is enabled. 0 if not. 0xFF on error.
  */
-uint8_t APDS9960::getProxGainCompEnable() {
+uint8_t apds9960::getProxGainCompEnable() {
 	uint8_t val;
 
 	/* Read value from CONFIG3 register */
-	if (!this->_i2c->readDataByte(APDS9960_CONFIG3, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONFIG3, val)) {
 		return ERROR;
 	}
 
@@ -1398,11 +1416,11 @@ uint8_t APDS9960::getProxGainCompEnable() {
  * @param[in] enable 1 to enable compensation. 0 to disable compensation.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProxGainCompEnable(uint8_t enable) {
+bool apds9960::setProxGainCompEnable(uint8_t enable) {
 	uint8_t val;
 
 	/* Read value from CONFIG3 register */
-	if (!this->_i2c->readDataByte(APDS9960_CONFIG3, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONFIG3, val)) {
 		return false;
 	}
 
@@ -1413,7 +1431,7 @@ bool APDS9960::setProxGainCompEnable(uint8_t enable) {
 	val |= enable;
 
 	/* Write register value back into CONFIG3 register */
-	if (!this->_i2c->writeDataByte(APDS9960_CONFIG3, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONFIG3, val)) {
 		return false;
 	}
 
@@ -1432,11 +1450,11 @@ bool APDS9960::setProxGainCompEnable(uint8_t enable) {
  *
  * @return Current proximity mask for photodiodes. 0xFF on error.
  */
-uint8_t APDS9960::getProxPhotoMask() {
+uint8_t apds9960::getProxPhotoMask() {
 	uint8_t val;
 
 	/* Read value from CONFIG3 register */
-	if (!this->_i2c->readDataByte(APDS9960_CONFIG3, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONFIG3, val)) {
 		return ERROR;
 	}
 
@@ -1459,11 +1477,11 @@ uint8_t APDS9960::getProxPhotoMask() {
  * @param[in] mask 4-bit mask value
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProxPhotoMask(uint8_t mask) {
+bool apds9960::setProxPhotoMask(uint8_t mask) {
 	uint8_t val;
 
 	/* Read value from CONFIG3 register */
-	if (!this->_i2c->readDataByte(APDS9960_CONFIG3, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_CONFIG3, val)) {
 		return false;
 	}
 
@@ -1473,7 +1491,7 @@ bool APDS9960::setProxPhotoMask(uint8_t mask) {
 	val |= mask;
 
 	/* Write register value back into CONFIG3 register */
-	if (!this->_i2c->writeDataByte(APDS9960_CONFIG3, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_CONFIG3, val)) {
 		return false;
 	}
 
@@ -1485,11 +1503,11 @@ bool APDS9960::setProxPhotoMask(uint8_t mask) {
  *
  * @return Current entry proximity threshold.
  */
-uint8_t APDS9960::getGestureEnterThresh() {
+uint8_t apds9960::getGestureEnterThresh() {
 	uint8_t val;
 
 	/* Read value from GPENTH register */
-	if (!this->_i2c->readDataByte(APDS9960_GPENTH, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GPENTH, val)) {
 		val = 0;
 	}
 
@@ -1502,8 +1520,8 @@ uint8_t APDS9960::getGestureEnterThresh() {
  * @param[in] threshold proximity value needed to start gesture mode
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureEnterThresh(uint8_t threshold) {
-	if (!this->_i2c->writeDataByte(APDS9960_GPENTH, threshold)) {
+bool apds9960::setGestureEnterThresh(uint8_t threshold) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GPENTH, threshold)) {
 		return false;
 	}
 
@@ -1515,11 +1533,11 @@ bool APDS9960::setGestureEnterThresh(uint8_t threshold) {
  *
  * @return Current exit proximity threshold.
  */
-uint8_t APDS9960::getGestureExitThresh() {
+uint8_t apds9960::getGestureExitThresh() {
 	uint8_t val;
 
 	/* Read value from GEXTH register */
-	if (!this->_i2c->readDataByte(APDS9960_GEXTH, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GEXTH, val)) {
 		val = 0;
 	}
 
@@ -1532,8 +1550,8 @@ uint8_t APDS9960::getGestureExitThresh() {
  * @param[in] threshold proximity value needed to end gesture mode
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureExitThresh(uint8_t threshold) {
-	if (!this->_i2c->writeDataByte(APDS9960_GEXTH, threshold)) {
+bool apds9960::setGestureExitThresh(uint8_t threshold) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GEXTH, threshold)) {
 		return false;
 	}
 
@@ -1551,11 +1569,11 @@ bool APDS9960::setGestureExitThresh(uint8_t threshold) {
  *
  * @return the current photodiode gain. 0xFF on error.
  */
-uint8_t APDS9960::getGestureGain() {
+uint8_t apds9960::getGestureGain() {
 	uint8_t val;
 
 	/* Read value from GCONF2 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF2, val)) {
 		return ERROR;
 	}
 
@@ -1577,11 +1595,11 @@ uint8_t APDS9960::getGestureGain() {
  * @param[in] gain the value for the photodiode gain
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureGain(uint8_t gain) {
+bool apds9960::setGestureGain(uint8_t gain) {
 	uint8_t val;
 
 	/* Read value from GCONF2 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF2, val)) {
 		return false;
 	}
 
@@ -1592,7 +1610,7 @@ bool APDS9960::setGestureGain(uint8_t gain) {
 	val |= gain;
 
 	/* Write register value back into GCONF2 register */
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF2, val)) {
 		return false;
 	}
 
@@ -1610,11 +1628,11 @@ bool APDS9960::setGestureGain(uint8_t gain) {
  *
  * @return the LED drive current value. 0xFF on error.
  */
-uint8_t APDS9960::getGestureLEDDrive() {
+uint8_t apds9960::getGestureLEDDrive() {
 	uint8_t val;
 
 	/* Read value from GCONF2 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF2, val)) {
 		return ERROR;
 	}
 
@@ -1636,11 +1654,11 @@ uint8_t APDS9960::getGestureLEDDrive() {
  * @param[in] drive the value for the LED drive current
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureLEDDrive(uint8_t drive) {
+bool apds9960::setGestureLEDDrive(uint8_t drive) {
 	uint8_t val;
 
 	/* Read value from GCONF2 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF2, val)) {
 		return false;
 	}
 
@@ -1651,7 +1669,7 @@ bool APDS9960::setGestureLEDDrive(uint8_t drive) {
 	val |= drive;
 
 	/* Write register value back into GCONF2 register */
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF2, val)) {
 		return false;
 	}
 
@@ -1673,11 +1691,11 @@ bool APDS9960::setGestureLEDDrive(uint8_t drive) {
  *
  * @return the current wait time between gestures. 0xFF on error.
  */
-uint8_t APDS9960::getGestureWaitTime() {
+uint8_t apds9960::getGestureWaitTime() {
 	uint8_t val;
 
 	/* Read value from GCONF2 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF2, val)) {
 		return ERROR;
 	}
 
@@ -1703,11 +1721,11 @@ uint8_t APDS9960::getGestureWaitTime() {
  * @param[in] the value for the wait time
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureWaitTime(uint8_t time) {
+bool apds9960::setGestureWaitTime(uint8_t time) {
 	uint8_t val;
 
 	/* Read value from GCONF2 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF2, val)) {
 		return false;
 	}
 
@@ -1717,7 +1735,7 @@ bool APDS9960::setGestureWaitTime(uint8_t time) {
 	val |= time;
 
 	/* Write register value back into GCONF2 register */
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF2, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF2, val)) {
 		return false;
 	}
 
@@ -1730,18 +1748,18 @@ bool APDS9960::setGestureWaitTime(uint8_t time) {
  * @param[out] threshold current low threshold stored on the APDS-9960
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::getLightIntLowThreshold(uint16_t &threshold) {
+bool apds9960::getLightIntLowThreshold(uint16_t &threshold) {
 	uint8_t val_byte;
 	threshold = 0;
 
 	/* Read value from ambient light low threshold, low byte register */
-	if (!this->_i2c->readDataByte(APDS9960_AILTL, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_AILTL, val_byte)) {
 		return false;
 	}
 	threshold = val_byte;
 
 	/* Read value from ambient light low threshold, high byte register */
-	if (!this->_i2c->readDataByte(APDS9960_AILTH, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_AILTH, val_byte)) {
 		return false;
 	}
 	threshold = threshold + ((uint16_t) val_byte << 8);
@@ -1755,7 +1773,7 @@ bool APDS9960::getLightIntLowThreshold(uint16_t &threshold) {
  * @param[in] threshold low threshold value for interrupt to trigger
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setLightIntLowThreshold(uint16_t threshold) {
+bool apds9960::setLightIntLowThreshold(uint16_t threshold) {
 	uint8_t val_low;
 	uint8_t val_high;
 
@@ -1764,12 +1782,12 @@ bool APDS9960::setLightIntLowThreshold(uint16_t threshold) {
 	val_high = (threshold & 0xFF00) >> 8;
 
 	/* Write low byte */
-	if (!this->_i2c->writeDataByte(APDS9960_AILTL, val_low)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_AILTL, val_low)) {
 		return false;
 	}
 
 	/* Write high byte */
-	if (!this->_i2c->writeDataByte(APDS9960_AILTH, val_high)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_AILTH, val_high)) {
 		return false;
 	}
 
@@ -1782,18 +1800,18 @@ bool APDS9960::setLightIntLowThreshold(uint16_t threshold) {
  * @param[out] threshold current low threshold stored on the APDS-9960
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::getLightIntHighThreshold(uint16_t &threshold) {
+bool apds9960::getLightIntHighThreshold(uint16_t &threshold) {
 	uint8_t val_byte;
 	threshold = 0;
 
 	/* Read value from ambient light high threshold, low byte register */
-	if (!this->_i2c->readDataByte(APDS9960_AIHTL, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_AIHTL, val_byte)) {
 		return false;
 	}
 	threshold = val_byte;
 
 	/* Read value from ambient light high threshold, high byte register */
-	if (!this->_i2c->readDataByte(APDS9960_AIHTH, val_byte)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_AIHTH, val_byte)) {
 		return false;
 	}
 	threshold = threshold + ((uint16_t) val_byte << 8);
@@ -1807,7 +1825,7 @@ bool APDS9960::getLightIntHighThreshold(uint16_t &threshold) {
  * @param[in] threshold high threshold value for interrupt to trigger
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setLightIntHighThreshold(uint16_t threshold) {
+bool apds9960::setLightIntHighThreshold(uint16_t threshold) {
 	uint8_t val_low;
 	uint8_t val_high;
 
@@ -1816,12 +1834,12 @@ bool APDS9960::setLightIntHighThreshold(uint16_t threshold) {
 	val_high = (threshold & 0xFF00) >> 8;
 
 	/* Write low byte */
-	if (!this->_i2c->writeDataByte(APDS9960_AIHTL, val_low)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_AIHTL, val_low)) {
 		return false;
 	}
 
 	/* Write high byte */
-	if (!this->_i2c->writeDataByte(APDS9960_AIHTH, val_high)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_AIHTH, val_high)) {
 		return false;
 	}
 
@@ -1834,11 +1852,11 @@ bool APDS9960::setLightIntHighThreshold(uint16_t threshold) {
  * @param[out] threshold current low threshold stored on the APDS-9960
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::getProximityIntLowThreshold(uint8_t &threshold) {
+bool apds9960::getProximityIntLowThreshold(uint8_t &threshold) {
 	threshold = 0;
 
 	/* Read value from proximity low threshold register */
-	if (!this->_i2c->readDataByte(APDS9960_PILT, threshold)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_PILT, threshold)) {
 		return false;
 	}
 
@@ -1851,10 +1869,10 @@ bool APDS9960::getProximityIntLowThreshold(uint8_t &threshold) {
  * @param[in] threshold low threshold value for interrupt to trigger
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProximityIntLowThreshold(uint8_t threshold) {
+bool apds9960::setProximityIntLowThreshold(uint8_t threshold) {
 
 	/* Write threshold value to register */
-	if (!this->_i2c->writeDataByte(APDS9960_PILT, threshold)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PILT, threshold)) {
 		return false;
 	}
 
@@ -1867,11 +1885,11 @@ bool APDS9960::setProximityIntLowThreshold(uint8_t threshold) {
  * @param[out] threshold current low threshold stored on the APDS-9960
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::getProximityIntHighThreshold(uint8_t &threshold) {
+bool apds9960::getProximityIntHighThreshold(uint8_t &threshold) {
 	threshold = 0;
 
 	/* Read value from proximity low threshold register */
-	if (!this->_i2c->readDataByte(APDS9960_PIHT, threshold)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_PIHT, threshold)) {
 		return false;
 	}
 
@@ -1884,10 +1902,10 @@ bool APDS9960::getProximityIntHighThreshold(uint8_t &threshold) {
  * @param[in] threshold high threshold value for interrupt to trigger
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProximityIntHighThreshold(uint8_t threshold) {
+bool apds9960::setProximityIntHighThreshold(uint8_t threshold) {
 
 	/* Write threshold value to register */
-	if (!this->_i2c->writeDataByte(APDS9960_PIHT, threshold)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_PIHT, threshold)) {
 		return false;
 	}
 
@@ -1899,11 +1917,11 @@ bool APDS9960::setProximityIntHighThreshold(uint8_t threshold) {
  *
  * @return 1 if interrupts are enabled, 0 if not. 0xFF on error.
  */
-uint8_t APDS9960::getAmbientLightIntEnable() {
+uint8_t apds9960::getAmbientLightIntEnable() {
 	uint8_t val;
 
 	/* Read value from ENABLE register */
-	if (!this->_i2c->readDataByte(APDS9960_ENABLE, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_ENABLE, val)) {
 		return ERROR;
 	}
 
@@ -1919,11 +1937,11 @@ uint8_t APDS9960::getAmbientLightIntEnable() {
  * @param[in] enable 1 to enable interrupts, 0 to turn them off
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setAmbientLightIntEnable(uint8_t enable) {
+bool apds9960::setAmbientLightIntEnable(uint8_t enable) {
 	uint8_t val;
 
 	/* Read value from ENABLE register */
-	if (!this->_i2c->readDataByte(APDS9960_ENABLE, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_ENABLE, val)) {
 		return false;
 	}
 
@@ -1934,7 +1952,7 @@ bool APDS9960::setAmbientLightIntEnable(uint8_t enable) {
 	val |= enable;
 
 	/* Write register value back into ENABLE register */
-	if (!this->_i2c->writeDataByte(APDS9960_ENABLE, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_ENABLE, val)) {
 		return false;
 	}
 
@@ -1946,11 +1964,11 @@ bool APDS9960::setAmbientLightIntEnable(uint8_t enable) {
  *
  * @return 1 if interrupts are enabled, 0 if not. 0xFF on error.
  */
-uint8_t APDS9960::getProximityIntEnable() {
+uint8_t apds9960::getProximityIntEnable() {
 	uint8_t val;
 
 	/* Read value from ENABLE register */
-	if (!this->_i2c->readDataByte(APDS9960_ENABLE, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_ENABLE, val)) {
 		return ERROR;
 	}
 
@@ -1966,11 +1984,11 @@ uint8_t APDS9960::getProximityIntEnable() {
  * @param[in] enable 1 to enable interrupts, 0 to turn them off
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setProximityIntEnable(uint8_t enable) {
+bool apds9960::setProximityIntEnable(uint8_t enable) {
 	uint8_t val;
 
 	/* Read value from ENABLE register */
-	if (!this->_i2c->readDataByte(APDS9960_ENABLE, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_ENABLE, val)) {
 		return false;
 	}
 
@@ -1981,7 +1999,7 @@ bool APDS9960::setProximityIntEnable(uint8_t enable) {
 	val |= enable;
 
 	/* Write register value back into ENABLE register */
-	if (!this->_i2c->writeDataByte(APDS9960_ENABLE, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_ENABLE, val)) {
 		return false;
 	}
 
@@ -1993,11 +2011,11 @@ bool APDS9960::setProximityIntEnable(uint8_t enable) {
  *
  * @return 1 if interrupts are enabled, 0 if not. 0xFF on error.
  */
-uint8_t APDS9960::getGestureIntEnable() {
+uint8_t apds9960::getGestureIntEnable() {
 	uint8_t val;
 
 	/* Read value from GCONF4 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF4, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF4, val)) {
 		return ERROR;
 	}
 
@@ -2013,11 +2031,11 @@ uint8_t APDS9960::getGestureIntEnable() {
  * @param[in] enable 1 to enable interrupts, 0 to turn them off
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureIntEnable(uint8_t enable) {
+bool apds9960::setGestureIntEnable(uint8_t enable) {
 	uint8_t val;
 
 	/* Read value from GCONF4 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF4, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF4, val)) {
 		return false;
 	}
 
@@ -2028,7 +2046,7 @@ bool APDS9960::setGestureIntEnable(uint8_t enable) {
 	val |= enable;
 
 	/* Write register value back into GCONF4 register */
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF4, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF4, val)) {
 		return false;
 	}
 
@@ -2040,9 +2058,9 @@ bool APDS9960::setGestureIntEnable(uint8_t enable) {
  *
  * @return True if operation completed successfully. False otherwise.
  */
-bool APDS9960::clearAmbientLightInt() {
+bool apds9960::clearAmbientLightInt() {
 	uint8_t throwaway;
-	if (!this->_i2c->readDataByte(APDS9960_AICLEAR, throwaway)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_AICLEAR, throwaway)) {
 		return false;
 	}
 
@@ -2054,9 +2072,9 @@ bool APDS9960::clearAmbientLightInt() {
  *
  * @return True if operation completed successfully. False otherwise.
  */
-bool APDS9960::clearProximityInt() {
+bool apds9960::clearProximityInt() {
 	uint8_t throwaway;
-	if (!this->_i2c->readDataByte(APDS9960_PICLEAR, throwaway)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_PICLEAR, throwaway)) {
 		return false;
 	}
 
@@ -2068,11 +2086,11 @@ bool APDS9960::clearProximityInt() {
  *
  * @return 1 if gesture state machine is running, 0 if not. 0xFF on error.
  */
-uint8_t APDS9960::getGestureMode() {
+uint8_t apds9960::getGestureMode() {
 	uint8_t val;
 
 	/* Read value from GCONF4 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF4, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF4, val)) {
 		return ERROR;
 	}
 
@@ -2088,11 +2106,11 @@ uint8_t APDS9960::getGestureMode() {
  * @param[in] mode 1 to enter gesture state machine, 0 to exit.
  * @return True if operation successful. False otherwise.
  */
-bool APDS9960::setGestureMode(uint8_t mode) {
+bool apds9960::setGestureMode(uint8_t mode) {
 	uint8_t val;
 
 	/* Read value from GCONF4 register */
-	if (!this->_i2c->readDataByte(APDS9960_GCONF4, val)) {
+	if (!this->_I2C_Handler->readDataByte(APDS9960_GCONF4, val)) {
 		return false;
 	}
 
@@ -2102,7 +2120,7 @@ bool APDS9960::setGestureMode(uint8_t mode) {
 	val |= mode;
 
 	/* Write register value back into GCONF4 register */
-	if (!this->_i2c->writeDataByte(APDS9960_GCONF4, val)) {
+	if (!this->_I2C_Handler->writeDataByte(APDS9960_GCONF4, val)) {
 		return false;
 	}
 
