@@ -1,7 +1,8 @@
 /**
- * @file    SparkFun_APDS-9960.h
+ * @file    apds9960.h
  * @brief   Library for the SparkFun APDS-9960 breakout board
- * @author  Shawn Hymel (SparkFun Electronics)
+ * @author  Shawn Hymel       (SparkFun Electronics)
+ * @author  Alexandre Foucher (Student of University of Bretagne Sud, FRANCE)
  *
  * @copyright	This code is public domain but you buy me a beer if you use
  * this and we meet someday (Beerware license).
@@ -14,7 +15,8 @@
 #ifndef APDS9960_H
 #define APDS9960_H
 
-#include <i2c.h>
+#include <i2c_handler.h>
+#include <Component/vnh5019a_e.h>
 #include <stm32f4xx_hal.h>
 
 #define MIN(a,b) a<b?a:b
@@ -220,12 +222,12 @@ typedef struct gesture_data_type {
 } gesture_data_type;
 
 /* APDS9960 Class */
-class APDS9960 {
+class apds9960 {
 public:
 
     /* Initialization methods */
-	APDS9960(I2C_HandleTypeDef *i2cHandler);
-    ~APDS9960();
+	apds9960(I2C_HandleTypeDef *i2cHandler, vnh5019a_e *motorDriver);
+    ~apds9960();
     bool init();
     uint8_t getMode();
     bool setMode(uint8_t mode, uint8_t enable);
@@ -297,7 +299,8 @@ public:
 private:
 
     /* I2C port */
-    i2c *_i2c;
+    I2C_Handler *_I2C_Handler;
+    vnh5019a_e  *_motorDriver;
 
     /* Gesture processing */
     void resetGestureParameters();
