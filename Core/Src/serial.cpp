@@ -44,3 +44,10 @@ void serial::print(const uint16_t val){
 	sprintf(buffer, "%d", val);
 	serial::print(buffer);
 }
+
+void serial::print(const int32_t val){
+	char buffer[12];
+	sprintf(buffer, "%ld", val);
+	serial::print(buffer);
+}
+

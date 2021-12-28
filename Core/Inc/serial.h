@@ -1,8 +1,11 @@
 /*
- * Uart.h
+ * @file    uart.h
  *
- *  Created on: 15 nov. 2021
- *      Author: Alexandre Foucher
+ * @brief   Library for the Pololu VNH5019A_E motor driver
+ * @see     https://www.pololu.com/file/0J504/vnh5019a-e.pdf
+ *
+ * @author  Alexandre Foucher (Student of University of Bretagne Sud (Lorient, FRANCE))
+ * @date    December 2021
  */
 
 #ifndef INC_SERIAL_H_
@@ -20,6 +23,7 @@ public:
 	static void printHex(const uint8_t val);
 	static void print   (const uint8_t val);
 	static void print   (const uint16_t val);
+	static void print   (const int32_t val);
 
 private:
 	static UART_HandleTypeDef *_uart;
